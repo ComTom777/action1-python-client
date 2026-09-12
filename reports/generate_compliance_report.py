@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import html
 import json
 import os
 import sys
@@ -46,6 +47,15 @@ _SLA_RANK = {"due later": 0, "due soon": 1, "overdue": 2}
 
 # Action1's endpoint last_seen format, e.g. "2026-01-14_17-25-29".
 _ACTION1_TIMESTAMP_FORMAT = "%Y-%m-%d_%H-%M-%S"
+
+
+def _safe_float(value: Any, default: float = 0.0) -> float:
+    """cvss_score is usually numeric but the API has been seen to send "N/A"/"" for CVEs
+    that haven't been scored yet - fall back instead of crashing the whole report."""
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
 
 
 def days_since(timestamp: str | None) -> int | None:
@@ -142,7 +152,7 @@ def build_vulnerabilities_rows(vulnerabilities: list[dict]) -> list[dict]:
         )
     # CISA Known Exploited Vulnerabilities first (actively exploited in the wild), then by CVSS.
     rows.sort(
-        key=lambda r: (r["cisa_kev"] == "Yes", float(r["cvss_score"] or 0)),
+        key=lambda r: (r["cisa_kev"] == "Yes", _safe_float(r["cvss_score"])),
         reverse=True,
     )
     return rows
@@ -173,6 +183,15 @@ def build_missing_updates_rows(updates: list[dict]) -> list[dict]:
     return rows
 
 
+def _csv_safe(value: Any) -> Any:
+    """Prefix cells starting with =+-@ so Excel/Sheets won't run them as formulas when the
+    org/endpoint/software names come from data we don't control (the Action1 API, scan JSON)."""
+    text = str(value)
+    if text.lstrip() and text.lstrip()[0] in "=+-@":
+        return "'" + text
+    return value
+
+
 def write_csv(path: Path, rows: list[dict]) -> None:
     if not rows:
         path.write_text("", encoding="utf-8")
@@ -180,16 +199,16 @@ def write_csv(path: Path, rows: list[dict]) -> None:
     with path.open("w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
         writer.writeheader()
-        writer.writerows(rows)
+        writer.writerows({k: _csv_safe(v) for k, v in row.items()} for row in rows)
 
 
 def _html_table(rows: list[dict], columns: list[str], limit: int = 15) -> str:
     if not rows:
         return "<p><em>None.</em></p>"
-    head = "".join(f"<th>{c}</th>" for c in columns)
+    head = "".join(f"<th>{html.escape(c)}</th>" for c in columns)
     body_rows = []
     for r in rows[:limit]:
-        cells = "".join(f"<td>{r.get(c, '')}</td>" for c in columns)
+        cells = "".join(f"<td>{html.escape(str(r.get(c, '')))}</td>" for c in columns)
         body_rows.append(f"<tr>{cells}</tr>")
     return f"<table><thead><tr>{head}</tr></thead><tbody>{''.join(body_rows)}</tbody></table>"
 
@@ -213,14 +232,15 @@ def write_summary_html(
     # Excludes stale endpoints: a compliance % from a host not seen in months isn't "current"
     # posture, and averaging it in would understate/overstate the fleet's real state.
     cis_scores = [
-        float(r["cis_compliance_percent"])
+        _safe_float(r["cis_compliance_percent"])
         for r in endpoint_rows
         if r["cis_compliance_percent"] not in ("", None) and not r["stale"]
     ]
     avg_cis = f"{sum(cis_scores) / len(cis_scores):.1f}%" if cis_scores else "no scan data"
 
-    html = f"""<!doctype html>
-<html><head><meta charset="utf-8"><title>Compliance Report - {org.get('name', '')}</title>
+    org_name = html.escape(str(org.get("name", org.get("id", ""))))
+    doc = f"""<!doctype html>
+<html><head><meta charset="utf-8"><title>Compliance Report - {org_name}</title>
 <style>
   body {{ font-family: system-ui, sans-serif; margin: 2rem; color: #1a1a1a; }}
   h1 {{ font-size: 1.4rem; }} h2 {{ font-size: 1.1rem; margin-top: 2rem; }}
@@ -233,7 +253,7 @@ def write_summary_html(
   .stat .l {{ font-size: 0.8rem; color: #555; }}
 </style></head>
 <body>
-<h1>Compliance Report - {org.get('name', org.get('id', ''))}</h1>
+<h1>Compliance Report - {org_name}</h1>
 <div class="stat-row">
   <div class="stat"><span class="n">{total}</span><span class="l">Endpoints</span></div>
   <div class="stat"><span class="n">{connected}</span><span class="l">Connected</span></div>
@@ -261,7 +281,7 @@ data shown for these is a snapshot from whenever they were last online, not thei
 
 </body></html>
 """
-    path.write_text(html, encoding="utf-8")
+    path.write_text(doc, encoding="utf-8")
 
 
 def main() -> None:

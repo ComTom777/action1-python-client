@@ -67,9 +67,11 @@ try {
     }
     elseif ($onLinux) {
         $meminfo = Get-Content '/proc/meminfo' -ErrorAction Stop
-        $totalKb = [int](($meminfo | Where-Object { $_ -match '^MemTotal:\s+(\d+)' }) -replace '\D', ' ' | ForEach-Object { ($_ -split '\s+')[0] })
+        $totalLine = $meminfo | Where-Object { $_ -match '^MemTotal:\s+(\d+)' }
+        # [int64], not [int]: MemTotal in KiB exceeds Int32's ~2 billion ceiling above ~2TiB RAM.
+        $totalKb = if ($totalLine) { [int64](($totalLine -replace '\D', ' ') -split '\s+' | Where-Object { $_ })[0] } else { 0 }
         $availLine = $meminfo | Where-Object { $_ -match '^MemAvailable:\s+(\d+)' }
-        $availKb = if ($availLine) { [int](($availLine -replace '\D', ' ') -split '\s+' | Where-Object { $_ })[0] } else { 0 }
+        $availKb = if ($availLine) { [int64](($availLine -replace '\D', ' ') -split '\s+' | Where-Object { $_ })[0] } else { 0 }
         $memTotalGb = [math]::Round($totalKb / 1MB, 1)
         $memFreeGb = [math]::Round($availKb / 1MB, 1)
     }

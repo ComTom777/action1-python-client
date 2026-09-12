@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import time
 from typing import Any, Iterator
+from urllib.parse import unquote
 
 import httpx
 
@@ -63,11 +64,22 @@ class Action1HTTPBase:
                 f"Authentication failed ({response.status_code}): {response.text}"
             )
 
-        payload = response.json()
-        self._access_token = payload["access_token"]
-        expires_in = int(payload.get("expires_in", 3600))
-        # Refresh a few seconds early so a request doesn't race an about-to-expire token.
-        self._token_expires_at = time.monotonic() + expires_in - 5
+        try:
+            payload = response.json()
+            access_token = payload["access_token"]
+            expires_in = int(payload.get("expires_in", 3600))
+            if not isinstance(access_token, str) or not access_token:
+                raise ValueError("access_token is missing or not a non-empty string")
+        except (ValueError, KeyError, TypeError, OverflowError) as exc:
+            raise Action1AuthError(
+                f"Authentication succeeded but the token response was malformed: {response.text}"
+            ) from exc
+
+        self._access_token = access_token
+        # Refresh a few seconds early so a request doesn't race an about-to-expire token
+        # (floored at 0 so a short-lived token doesn't push the expiry into the past, which
+        # would force a re-auth round trip on every single request).
+        self._token_expires_at = time.monotonic() + max(expires_in - 5, 0)
 
     def _auth_headers(self, extra: dict[str, str] | None = None) -> dict[str, str]:
         self._ensure_token()
@@ -90,6 +102,20 @@ class Action1HTTPBase:
         content: bytes | None = None,
         headers: dict[str, str] | None = None,
     ) -> httpx.Response:
+        # ``path`` is built by interpolating resource IDs (e.g. ``f"/organizations/{org_id}"``)
+        # that may come from untrusted callers (an MCP server forwarding tool-call arguments,
+        # say). httpx treats an absolute URL as an override of base_url - not a relative path
+        # under it - which would leak the bearer token to an arbitrary host; and a ".." path
+        # segment (including percent-encoded, hence the unquote()) can walk the request outside
+        # the versioned API path (verified: "/organizations/../../oauth2/token" resolves to
+        # ".../api/oauth2/token"). Both are rejected here, the one place every request passes
+        # through. Segment-exact matching (not a bare substring check) so a legitimate ID like
+        # "release..1" isn't falsely rejected.
+        decoded = unquote(path)
+        if "://" in decoded or decoded.startswith("//"):
+            raise ValueError(f"path must be a relative API path, got {path!r}")
+        if ".." in decoded.split("/"):
+            raise ValueError(f"path must not contain a '..' segment: {path!r}")
         response = self._http.request(
             method,
             path,
@@ -135,7 +161,7 @@ class Action1HTTPBase:
         """Yield every item across all pages of a ResultPage-shaped GET endpoint."""
         params = dict(params or {})
         params.setdefault("limit", 50)
-        params.setdefault("from", 0)
+        params["from"] = int(params.setdefault("from", 0))
 
         while True:
             page = self.get(path, params=params)
@@ -143,4 +169,4 @@ class Action1HTTPBase:
             yield from items
             if not items or not page.get("next_page"):
                 break
-            params["from"] = params["from"] + len(items)
+            params["from"] += len(items)

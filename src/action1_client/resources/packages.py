@@ -129,6 +129,8 @@ class PackagesMixin:
         ``platform`` is ``Windows_32`` or ``Windows_64`` (per PSAction1's ``-Platform``
         ValidateSet; the spec itself only documents it as a free-text query param).
         """
+        if chunk_size <= 0:
+            raise ValueError(f"chunk_size must be positive, got {chunk_size!r}")
         size = os.path.getsize(file_path)
         resolved_content_type = content_type or mimetypes.guess_type(file_path)[0] or (
             "application/octet-stream"
@@ -161,4 +163,9 @@ class PackagesMixin:
                 )
                 offset += len(chunk)
 
-        return {"upload_id": upload_id, "bytes_uploaded": size}
+        if offset != size:
+            raise Action1Error(
+                f"Uploaded {offset} bytes but {file_path!r} is {size} bytes "
+                "(file changed size during upload?)"
+            )
+        return {"upload_id": upload_id, "bytes_uploaded": offset}
