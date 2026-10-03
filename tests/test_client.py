@@ -1,3 +1,5 @@
+import json
+
 import httpx
 import pytest
 import respx
@@ -150,3 +152,23 @@ def test_retries_on_rate_limit(monkeypatch):
     with make_client() as client:
         assert client.get_organization("o1") == {"id": "o1"}
     assert route.call_count == 2
+
+
+@respx.mock
+def test_run_script_never_reboots():
+    respx.post(f"{BASE}/oauth2/token").mock(
+        return_value=httpx.Response(200, json={"access_token": "tok-123", "expires_in": 3600})
+    )
+    route = respx.post(f"{BASE}/automations/instances/org1").mock(
+        return_value=httpx.Response(200, json={"id": "inst1"})
+    )
+
+    with make_client() as client:
+        client.run_script("org1", ["ep1"], "hostname")
+
+    body = json.loads(route.calls.last.request.content)
+    params = body["actions"][0]["params"]
+    assert body["endpoints"] == [{"id": "ep1", "type": "Endpoint"}]
+    assert body["retry_minutes"]
+    assert params["run_script_text"] == "hostname"
+    assert params["reboot_options"] == {"auto_reboot": "no"} and params["reboot_exit_codes"] == ""

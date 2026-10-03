@@ -50,6 +50,37 @@ class AutomationsMixin:
         """Applies/executes an automation now. ``fields``: ``name``, ``actions``, ``endpoints``."""
         return self.post(f"/automations/instances/{org_id}", json=fields)
 
+    def run_script(
+        self, org_id: str, endpoint_ids: list[str], script_text: str, *, name: str = "Run PowerShell script"
+    ) -> dict:
+        """Run an inline PowerShell script now (as SYSTEM) on the given endpoints; returns the
+        automation instance. Each endpoint's output (stdout, capped at ~10,000 chars by Action1)
+        shows up as ``description`` in ``list_automation_instance_endpoint_results``.
+
+        ``retry_minutes`` is required though the spec doesn't say so; the reboot settings are
+        spelled out because the spec's own example auto-reboots on exit code 365.
+        """
+        return self.create_automation_instance(
+            org_id,
+            name=name,
+            retry_minutes="60",
+            endpoints=[{"id": e, "type": "Endpoint"} for e in endpoint_ids],
+            actions=[{
+                "name": "Run PowerShell",
+                "template_id": "run_script",
+                "params": {
+                    "display_summary": "",
+                    "condition_script_text": "",
+                    "condition_script_language": "PowerShell",
+                    "run_script_params": [],
+                    "run_script_text": script_text,
+                    "run_script_language": "PowerShell",
+                    "reboot_exit_codes": "",
+                    "reboot_options": {"auto_reboot": "no"},
+                },
+            }],
+        )
+
     def list_automation_instance_endpoint_results(self, org_id: str, instance_id: str) -> list[dict]:
         return list(
             self.paginate(f"/automations/instances/{org_id}/{instance_id}/endpoint-results")
