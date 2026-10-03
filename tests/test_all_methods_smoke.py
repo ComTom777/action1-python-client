@@ -35,6 +35,8 @@ def _dummy_value(param: inspect.Parameter):
     annotation = str(param.annotation)
     if name == "endpoint_ids" or "Iterable" in annotation or "list" in annotation.lower():
         return ["dummy-1", "dummy-2"]
+    if annotation == "dict":
+        return {"id": "dummy-id", "self": "dummy-self"}
     if "int" in annotation:
         return 1
     return f"dummy-{name}"

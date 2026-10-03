@@ -43,49 +43,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 from action1_client import Action1Client  # noqa: E402
 
 
-def create_or_update_data_source(client: Action1Client, name: str, description: str, script_path: str, columns: list[str], datasource_id: str | None) -> dict:
-    script_text = Path(script_path).read_text(encoding="utf-8")
-
-    if datasource_id:
-        ds = client.update_data_source(datasource_id, script_text=script_text, columns=columns)
-        print(f"Updated data source {ds['id']} ({ds['status']}, {len(ds['columns'])} columns)")
-        return ds
-
-    draft = client.create_data_source(
-        name=name, description=description, language="PowerShell", script_text=script_text,
-        columns=[], status="Draft",
-    )
-    ds = client.update_data_source(draft["id"], columns=columns, status="Published")
-    print(f"Created data source {ds['id']} ({ds['status']}, {len(ds['columns'])} columns)")
-    return ds
-
-
-def create_report(client: Action1Client, name: str, description: str, data_source: dict, columns: list[str]) -> dict:
-    ds_ref = {"id": data_source["id"], "self": data_source["self"]}
-    simple_columns = [
-        {"name": c, "enabled": "yes", "sort": "none", "data_source_id": data_source["id"]}
-        for c in columns
-    ]
-    filter_set = {
-        "filters": [
-            {"name": "Endpoint Name", "value": "*", "operator": "=", "data_source_id": data_source["id"]}
-        ],
-        "filter_logic": "",
-    }
-    report = client.create_custom_report(
-        name=name,
-        description=description,
-        data_sources=[ds_ref],
-        simple_columns=simple_columns,
-        summary_columns=[],
-        drilldown_columns=[],
-        filter_set=filter_set,
-        column_aliases=[],
-    )
-    print(f"Created report {report['id']!r} - {report['self']}")
-    return report
-
-
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--datasource-name", required=True)
@@ -103,11 +60,16 @@ def main() -> None:
     region = os.environ.get("ACTION1_REGION", "north_america")
 
     with Action1Client(client_id, client_secret, region=region) as client:
-        ds = create_or_update_data_source(
-            client, args.datasource_name, args.datasource_description, args.script, columns, args.datasource_id
+        ds = client.publish_data_source(
+            args.datasource_name, Path(args.script).read_text(encoding="utf-8"), columns,
+            description=args.datasource_description, data_source_id=args.datasource_id,
         )
+        print(f"Data source {ds['id']} ({ds['status']}, {len(ds['columns'])} columns)")
         if args.report_name:
-            create_report(client, args.report_name, args.report_description, ds, columns)
+            report = client.create_simple_report(
+                args.report_name, ds, columns, description=args.report_description
+            )
+            print(f"Created report {report['id']!r} - {report['self']}")
 
 
 if __name__ == "__main__":
