@@ -71,6 +71,10 @@ $results['Firewall'] = Get-CheckResult -Test {
 }
 
 $results['BitLocker'] = Get-CheckResult -Test {
+    # Windows Server doesn't ship the BitLocker feature by default - no cmdlet means no encryption.
+    if (-not (Get-Command Get-BitLockerVolume -ErrorAction SilentlyContinue)) {
+        return 'BitLocker feature is not installed - volumes are not encrypted'
+    }
     $findings = @()
     $volumes = Get-BitLockerVolume -ErrorAction Stop | Where-Object { $_.VolumeType -eq 'OperatingSystem' -or $_.VolumeType -eq 'Data' }
     foreach ($v in $volumes) {
@@ -131,6 +135,8 @@ $output = [PSCustomObject]@{
     'USB Storage Status'          = $results['USB Storage'].Status
     'USB Storage Findings'        = $results['USB Storage'].Findings
     'Scan Timestamp'              = (Get-Date).ToUniversalTime().ToString('o')
+    # Required by Action1: unique row key per endpoint ('none' = one row). Not a report column.
+    'A1_Key'                      = 'none'
 }
 
 $output

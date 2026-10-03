@@ -32,6 +32,10 @@ Requirements for the script (`language: "PowerShell"`):
   (present since pwsh 6+) and branch — see `cis_compliance_datasource.ps1` for the pattern. Give
   every column a value on every OS (use `'NotApplicable'` for checks that don't apply on that
   platform) rather than leaving properties unset.
+- Include an **`A1_Key`** property: the row's unique key (`'none'` when the script returns
+  one row per endpoint; use something like a SID or index for multi-row output). Without it the
+  agent's result is rejected with "Missing key column A1_Key in query output" (shows up in
+  `list_report_errors`). Don't list `A1_Key` in the data source's `columns`.
 - Wrap each check in try/catch — one failing check (e.g. `Get-BitLockerVolume` needing
   elevation) shouldn't blank out the rest of the row.
 
