@@ -36,6 +36,11 @@ Requirements for the script (`language: "PowerShell"`):
   one row per endpoint; use something like a SID or index for multi-row output). Without it the
   agent's result is rejected with "Missing key column A1_Key in query output" (shows up in
   `list_report_errors`). Don't list `A1_Key` in the data source's `columns`.
+- **At most 30 columns** (including `Endpoint Name`). With more, the agent's rows are dropped
+  silently - no data and nothing in `list_report_errors` (verified 2026-10: 30 works, 32 doesn't).
+- Every value is **truncated at 255 characters**. Keep values short and write long details
+  elsewhere (see `cis_controls_v8_datasource.ps1`, which puts the full result in a JSON file on
+  the endpoint and its path in a column).
 - Wrap each check in try/catch — one failing check (e.g. `Get-BitLockerVolume` needing
   elevation) shouldn't blank out the rest of the row.
 
