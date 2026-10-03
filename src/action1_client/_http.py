@@ -116,14 +116,20 @@ class Action1HTTPBase:
             raise ValueError(f"path must be a relative API path, got {path!r}")
         if ".." in decoded.split("/"):
             raise ValueError(f"path must not contain a '..' segment: {path!r}")
-        response = self._http.request(
-            method,
-            path,
-            params=params,
-            json=json,
-            content=content,
-            headers=self._auth_headers(headers),
-        )
+        # Action1 rate-limits per second (429 with a Retry-After); back off a few times rather
+        # than failing a burst of calls.
+        for attempt in range(4):
+            response = self._http.request(
+                method,
+                path,
+                params=params,
+                json=json,
+                content=content,
+                headers=self._auth_headers(headers),
+            )
+            if response.status_code != 429 or attempt == 3:
+                break
+            time.sleep(min(float(response.headers.get("Retry-After") or 1), 10))
         if response.status_code >= 400:
             raise Action1APIError.from_response(response)
         return response

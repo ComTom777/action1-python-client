@@ -135,3 +135,18 @@ def test_paginate_uses_total_items_when_next_page_missing():
 
     with make_client() as client:
         assert [o["id"] for o in client.list_organizations()] == ["1", "2", "3"]
+
+
+@respx.mock
+def test_retries_on_rate_limit(monkeypatch):
+    monkeypatch.setattr("action1_client._http.time.sleep", lambda s: None)
+    respx.post(f"{BASE}/oauth2/token").mock(
+        return_value=httpx.Response(200, json={"access_token": "tok-123", "expires_in": 3600})
+    )
+    route = respx.get(f"{BASE}/organizations/o1").mock(
+        side_effect=[httpx.Response(429, headers={"Retry-After": "1"}), httpx.Response(200, json={"id": "o1"})]
+    )
+
+    with make_client() as client:
+        assert client.get_organization("o1") == {"id": "o1"}
+    assert route.call_count == 2

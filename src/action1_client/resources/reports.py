@@ -19,14 +19,14 @@ class ReportsMixin:
         self, name: str, data_source: dict, columns: list[str], *, description: str = ""
     ) -> dict:
         """Custom report showing ``columns`` of one data source (as returned by
-        ``publish_data_source``). Every field below is required by the API even though the spec
-        doesn't say so: ``data_sources`` needs id+self, ``filter_set`` needs >= 1 filter, and the
-        empty lists must be present."""
+        ``publish_data_source``). Every field below is required by the API: ``data_sources``
+        must be "/API/data_sources/all/<id>" strings ({"id", "self"} objects 500 as of
+        2026-10), ``filter_set`` needs >= 1 filter, and the empty lists must be present."""
         ds_id = data_source["id"]
         return self.create_custom_report(
             name=name,
             description=description,
-            data_sources=[{"id": ds_id, "self": data_source["self"]}],
+            data_sources=[f"/API/data_sources/all/{ds_id}"],
             simple_columns=[
                 {"name": c, "enabled": "yes", "sort": "none", "data_source_id": ds_id}
                 for c in columns

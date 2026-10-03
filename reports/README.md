@@ -64,7 +64,7 @@ these as required, but the API 400s without every one of them present:
 
 | Field | Gotcha |
 |---|---|
-| `data_sources` | Must be `[{"id": <int>, "self": "<data source URL>"}]`. A bare id, or `{"id","type"}`, both fail (one with a 400, one with an opaque 500). |
+| `data_sources` | Must be `["/API/data_sources/all/<id>"]` (as in the spec's example). `{"id", "self"}` objects, a bare id, or `{"id","type"}` all fail - as of 2026-10 the object form returns an opaque 500. |
 | `simple_columns` | **Not** a list of strings — a list of `{"name", "enabled": "yes", "sort": "none", "data_source_id": <int>}`. |
 | `summary_columns` | Must be present; `[]` is accepted. |
 | `drilldown_columns` | Must be present; `[]` is accepted. |
@@ -74,7 +74,7 @@ these as required, but the API 400s without every one of them present:
 ```python
 client.create_custom_report(
     name="...", description="...",
-    data_sources=[{"id": ds["id"], "self": ds["self"]}],
+    data_sources=[f"/API/data_sources/all/{ds['id']}"],
     simple_columns=[
         {"name": c, "enabled": "yes", "sort": "none", "data_source_id": ds["id"]}
         for c in columns
@@ -91,7 +91,8 @@ client.create_custom_report(
 
 ## Do all of this in one command
 
-`create_native_report.py` implements steps 2–3 (given a script file and column list):
+`client.publish_data_source()` + `client.create_simple_report()` implement steps 2–3;
+`create_native_report.py` wraps them (given a script file and column list):
 
 ```bash
 export ACTION1_CLIENT_ID=api-key-xxx@action1.com
