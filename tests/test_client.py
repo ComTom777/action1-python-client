@@ -117,3 +117,21 @@ def test_add_endpoint_group_members_builds_batch_body():
         {"method": "POST", "data": {"endpoint_id": "ep-1", "type": "Endpoint"}},
         {"method": "POST", "data": {"endpoint_id": "ep-2", "type": "Endpoint"}},
     ]
+
+
+@respx.mock
+def test_paginate_uses_total_items_when_next_page_missing():
+    # /vulnerabilities returns total_items but never next_page - live tenant had 3104 CVEs and
+    # we were returning only the first 50.
+    respx.post(f"{BASE}/oauth2/token").mock(
+        return_value=httpx.Response(200, json={"access_token": "tok-123", "expires_in": 3600})
+    )
+    respx.get(f"{BASE}/organizations", params={"limit": "50", "from": "0"}).mock(
+        return_value=httpx.Response(200, json={"items": [{"id": "1"}, {"id": "2"}], "total_items": 3})
+    )
+    respx.get(f"{BASE}/organizations", params={"limit": "50", "from": "2"}).mock(
+        return_value=httpx.Response(200, json={"items": [{"id": "3"}], "total_items": "3"})
+    )
+
+    with make_client() as client:
+        assert [o["id"] for o in client.list_organizations()] == ["1", "2", "3"]

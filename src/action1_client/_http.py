@@ -167,6 +167,9 @@ class Action1HTTPBase:
             page = self.get(path, params=params)
             items = page.get("items", []) if isinstance(page, dict) else []
             yield from items
-            if not items or not page.get("next_page"):
-                break
             params["from"] += len(items)
+            # Some endpoints (e.g. /vulnerabilities) send total_items but no next_page.
+            # (total_items arrives as an int on some endpoints, a string on others.)
+            more = page.get("next_page") or params["from"] < int(page.get("total_items") or 0)
+            if not items or not more:
+                break
