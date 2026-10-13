@@ -12,6 +12,7 @@ from .exceptions import Action1APIError, Action1AuthError
 
 REGION_HOSTS = {
     "north_america": "https://app.action1.com/api/3.0",
+    "north_america_2": "https://app.na-2.action1.com/api/3.0",
     "europe": "https://app.eu.action1.com/api/3.0",
     "australia": "https://app.au.action1.com/api/3.0",
 }

@@ -81,6 +81,47 @@ class AutomationsMixin:
             }],
         )
 
+    def deploy_updates(
+        self,
+        org_id: str,
+        endpoint_ids: list[str],
+        packages: dict[str, str],
+        *,
+        reboot: bool = False,
+        name: str = "Deploy updates",
+    ) -> dict:
+        """Install specific updates now on the given endpoints; returns the automation instance.
+        ``packages`` maps a package id (``id`` of a ``list_missing_updates`` item) to the version
+        to install (its ``versions[].version``). Track it like ``run_script``.
+
+        Doesn't reboot unless ``reboot`` is true; then users get Action1's usual warning and
+        4 hours to save their work.
+        """
+        if not packages:
+            raise ValueError("packages is empty: name at least one package id and version")
+        reboot_options = (
+            {"auto_reboot": "yes", "show_message": "yes", "timeout": 240,
+             "message_text": "Your computer requires maintenance and will be rebooted. "
+                             "Please save all work and reboot now to avoid losing any data."}
+            if reboot else {"auto_reboot": "no"}
+        )
+        return self.create_automation_instance(
+            org_id,
+            name=name,
+            retry_minutes="1440",
+            endpoints=[{"id": e, "type": "Endpoint"} for e in endpoint_ids],
+            actions=[{
+                "name": "Deploy Update",
+                "template_id": "deploy_update",
+                "params": {
+                    "scope": "Specified",
+                    "display_summary": "Specified: " + ", ".join(f"{p} ({v})" for p, v in packages.items()),
+                    "packages": [{p: v} for p, v in packages.items()],
+                    "reboot_options": reboot_options,
+                },
+            }],
+        )
+
     def list_automation_instance_endpoint_results(self, org_id: str, instance_id: str) -> list[dict]:
         return list(
             self.paginate(f"/automations/instances/{org_id}/{instance_id}/endpoint-results")

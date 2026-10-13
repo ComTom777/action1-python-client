@@ -172,3 +172,25 @@ def test_run_script_never_reboots():
     assert body["retry_minutes"]
     assert params["run_script_text"] == "hostname"
     assert params["reboot_options"] == {"auto_reboot": "no"} and params["reboot_exit_codes"] == ""
+
+
+@respx.mock
+def test_deploy_updates_specified_packages_no_reboot():
+    respx.post(f"{BASE}/oauth2/token").mock(
+        return_value=httpx.Response(200, json={"access_token": "tok-123", "expires_in": 3600})
+    )
+    route = respx.post(f"{BASE}/automations/instances/org1").mock(
+        return_value=httpx.Response(200, json={"id": "inst1"})
+    )
+
+    with make_client() as client:
+        client.deploy_updates("org1", ["ep1"], {"Google_Chrome_builtin": "130.0.1"})
+        with pytest.raises(ValueError):
+            client.deploy_updates("org1", ["ep1"], {})
+
+    body = json.loads(route.calls.last.request.content)
+    action = body["actions"][0]
+    assert action["template_id"] == "deploy_update" and body["retry_minutes"]
+    assert action["params"]["scope"] == "Specified"
+    assert action["params"]["packages"] == [{"Google_Chrome_builtin": "130.0.1"}]
+    assert action["params"]["reboot_options"] == {"auto_reboot": "no"}
