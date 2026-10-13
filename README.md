@@ -21,7 +21,7 @@ from action1_client import Action1Client
 with Action1Client(
     client_id="api-key-....@action1.com",
     client_secret="...",
-    region="europe",  # or "north_america" / "north_america_2" / "australia"
+    region="europe",  # or "north_america" / "north_america_2" / "uk" / "australia"
 ) as client:
     for org in client.list_organizations():
         print(org["id"], org["name"])
